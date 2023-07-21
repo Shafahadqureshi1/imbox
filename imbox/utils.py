@@ -32,13 +32,43 @@ def str_encode(
     return str(value, encoding, errors)
 
 
-def str_decode(value='', encoding=None, errors='strict'):
+def str_decode(
+    value: Optional[bytes] = "",
+    encoding: Optional[str] = None,
+    errors: Optional[str] = "strict",
+) -> str:
+    """Decode string value from bytes or str.
+
+    Args:
+        value: The value to decode. (default: '')
+        encoding: The encoding to use for decoding. (default: None)
+        errors: The error handling scheme. (default: 'strict')
+
+    Returns:
+        The decoded string value.
+
+    Raises:
+        TypeError: If value type is not str or bytes.
+
+    """
     if isinstance(value, str):
-        return bytes(value, encoding, errors).decode('utf-8')
+        return _decode_str_to_str(value, encoding, errors)
     elif isinstance(value, bytes):
-        return value.decode(encoding or 'utf-8', errors=errors)
+        return _decode_bytes_to_str(value, encoding, errors)
     else:
         raise TypeError("Cannot decode '{}' object".format(value.__class__))
+
+
+def _decode_str_to_str(
+    value: str, encoding: Optional[str] = None, errors: Optional[str] = "strict"
+) -> str:
+    return bytes(value, encoding, errors).decode("utf-8")
+
+
+def _decode_bytes_to_str(
+    value: bytes, encoding: Optional[str] = None, errors: Optional[str] = "strict"
+) -> str:
+    return value.decode(encoding or "utf-8", errors=errors)
 
 
 def date_to_date_text(date):
