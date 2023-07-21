@@ -26,28 +26,35 @@ class Struct:
         return str(self.__dict__)
 
 
-def decode_mail_header(value, default_charset='us-ascii'):
+def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
     """
     Decode a header value into a unicode string.
-    """
-    try:
-        headers = decode_header(value)
-    except email.errors.HeaderParseError:
-        return str_decode(str_encode(value, default_charset, 'replace'), default_charset)
-    else:
-        for index, (text, charset) in enumerate(headers):
-            try:
-                logger.debug("Mail header no. {index}: {data} encoding {charset}".format(
-                    index=index,
-                    data=str_decode(text, charset or 'utf-8', 'replace'),
-                    charset=charset))
-                headers[index] = str_decode(text, charset or default_charset,
-                                            'replace')
-            except LookupError:
-                # if the charset is unknown, force default
-                headers[index] = str_decode(text, default_charset, 'replace')
 
-        return ''.join(headers)
+    Args:
+        value: The header value to decode.
+        default_charset: The default character set for decoding, defaults to 'us-ascii'.
+
+    Returns:
+        The decoded unicode string.
+
+    Raises:
+        None
+    """
+    headers = decode_header(value)
+    decoded_headers = []
+    for text, charset in headers:
+        try:
+            decoded_text = str_decode(text, charset or default_charset, "replace")
+        except LookupError:
+            # if the charset is unknown, force default
+            decoded_text = str_decode(text, default_charset, "replace")
+        decoded_headers.append(decoded_text)
+        logger.debug(
+            "Mail header: {data} encoding {charset}".format(
+                data=decoded_text, charset=charset
+            )
+        )
+    return "".join(decoded_headers)
 
 
 def get_mail_addresses(message, header_name):
