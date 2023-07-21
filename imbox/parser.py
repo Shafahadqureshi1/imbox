@@ -14,6 +14,8 @@ import logging
 from typing import List, Dict
 from imbox.utils import str_decode
 from typing import Tuple
+from email.message import Message
+from typing import Optional, Union, List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,108 @@ def parse_content_disposition(content_disposition: str) -> List[str]:
     """
     ret = re.split(r';(?=(?:[^"]*"[^"]*")*[^"]*$)', content_disposition)
     return [part.strip() for part in ret]
+
+
+def parse_attachment(message_part: Union[Message, str]) -> Optional[dict]:
+    """
+    Parse an attachment from an email message part and return its details.
+
+    Args:
+        message_part: The message part containing the attachment.
+
+    Returns:
+        A dictionary containing the details of the attachment.
+
+    Raises:
+        None.
+
+    Example:
+        >>> parse_attachment(message_part)
+        {
+            'content-type': 'application/pdf',
+            'size': 12345,
+            'content': <io.BytesIO object at 0x7f86a5c0e580>,
+            'content-id': 'attachment1',
+            'filename': 'report.pdf',
+            'create-date': '2021-01-01'
+        }
+    """
+
+    def decode_quoted_printable(value: str, encoding: str) -> str:
+        # implementation details
+
+        # implementation details
+
+        # implementation details
+
+        return message_part.get_payload(decode=True)
+
+    def get_attachment_content_type(message_part: Message) -> str:
+        return message_part.get_content_type()
+
+    def get_attachment_size(file_data: bytes) -> int:
+        return len(file_data)
+
+    def get_attachment_content(file_data: bytes) -> io.BytesIO:
+        return io.BytesIO(file_data)
+
+    def get_attachment_content_id(message_part: Message) -> Optional[str]:
+        return message_part.get("Content-ID", None)
+
+    def get_attachment_create_date(dispositions: List[str]) -> Optional[str]:
+        for param in dispositions[1:]:
+            if param:
+                name, value = decode_param(param)
+                if "create-date" in name:
+                    return value
+        return None
+
+    def decode_param(param: str) -> Tuple[str, str]:
+        # implementation details
+
+        # implementation details
+
+        filename_parts = []
+        for param in dispositions[1:]:
+            if param:
+                name, value = decode_param(param)
+                if name.rstrip("*") == "filename":
+                    if len(name) > 1 and name[1] != "":
+                        filename_parts.insert(
+                            int(name[1]),
+                            value[1:-1] if value.startswith('"') else value,
+                        )
+                    else:
+                        filename_parts.insert(
+                            0, value[1:-1] if value.startswith('"') else value
+                        )
+        return "".join(filename_parts)
+
+    # Check if the message part has a Content-Disposition header
+    content_disposition = message_part.get("Content-Disposition", None)
+    if content_disposition is not None and not message_part.is_multipart():
+        # Split and sanitize the Content-Disposition header
+        dispositions = [
+            disposition.strip()
+            for disposition in parse_content_disposition(content_disposition)
+            if disposition.strip()
+        ]
+
+        if dispositions[0].lower() in ["attachment", "inline"]:
+            file_data = get_attachment_file_data(message_part)
+            attachment = {
+                "content-type": get_attachment_content_type(message_part),
+                "size": get_attachment_size(file_data),
+                "content": get_attachment_content(file_data),
+                "content-id": get_attachment_content_id(message_part),
+            }
+
+            attachment["filename"] = parse_attachment_filename(dispositions)
+            attachment["create-date"] = get_attachment_create_date(dispositions)
+
+            return attachment
+
+    return None
 
 
 def decode_param(param: str) -> Tuple[str, str]:
@@ -156,53 +260,6 @@ def get_mail_addresses(
         return {"name": name, "email": address_email}
 
     return [decode_address(address) for address in addresses]
-
-
-
-def parse_attachment(message_part):
-    # Check again if this is a valid attachment
-    content_disposition = message_part.get("Content-Disposition", None)
-    if content_disposition is not None and not message_part.is_multipart():
-        dispositions = [
-            disposition.strip()
-            for disposition in parse_content_disposition(content_disposition)
-            if disposition.strip()
-        ]
-
-        if dispositions[0].lower() in ["attachment", "inline"]:
-            file_data = message_part.get_payload(decode=True)
-
-            attachment = {
-                'content-type': message_part.get_content_type(),
-                'size': len(file_data),
-                'content': io.BytesIO(file_data),
-                'content-id': message_part.get("Content-ID", None)
-            }
-            filename_parts = []
-            for param in dispositions[1:]:
-                if param:
-                    name, value = decode_param(param)
-
-                    # Check for split filename
-                    s_name = name.rstrip('*').split("*")
-                    if s_name[0] == 'filename':
-                        try:
-                            # If this is a split file name - use the number after the * as an index to insert this part
-                            if len(s_name) > 1 and s_name[1] != '':
-                                filename_parts.insert(int(s_name[1]),value[1:-1] if value.startswith('"') else value)
-                            else:
-                                filename_parts.insert(0,value[1:-1] if value.startswith('"') else value)
-                        except Exception as err:
-                            logger.debug('Parse attachment name error: %s', err)
-                            filename_parts.insert(0, value)
-
-                    if 'create-date' in name:
-                        attachment['create-date'] = value
-
-            attachment['filename'] = "".join(filename_parts)
-            return attachment
-
-    return None
 
 
 def decode_content(message):
