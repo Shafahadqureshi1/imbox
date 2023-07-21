@@ -2,6 +2,7 @@ from imaplib import IMAP4, IMAP4_SSL
 
 import logging
 import ssl as pythonssllib
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
