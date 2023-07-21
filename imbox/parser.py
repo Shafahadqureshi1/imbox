@@ -18,6 +18,9 @@ from email.message import Message
 from typing import Optional, Union, List, Dict
 from typing import Optional
 from typing import Optional, Dict
+from imaplib import ParseFlags
+from typing import Optional, Dict, List, Tuple, Union
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +92,139 @@ def fetch_email_by_uid(
     email_object.__dict__["flags"] = flags
 
     return email_object
+
+
+def parse_email(raw_email: Union[bytes, str]) -> Struct:
+    """
+    Parse an email and extract its content and metadata.
+
+    Args:
+        raw_email: The raw email data as bytes or string.
+
+    Returns:
+        A Struct object containing the parsed email data.
+
+    Example:
+        >>> parse_email(raw_email)
+        Struct(
+          raw_email='<raw_email>',
+          body={
+            'plain': ['<plain_content>'],
+            'html': ['<html_content>']
+          },
+          attachments=[
+            {
+              'content-type': 'application/pdf',
+              'size': 12345,
+              'content': <io.BytesIO object at 0x7f86a5c0e580>,
+              'content-id': 'attachment1',
+              'filename': 'report.pdf',
+              'create-date': '2021-01-01'
+            }
+          ],
+          sent_from=[{'name': '<sender_name>', 'email': '<sender_email>'}],
+          sent_to=[{'name': '<recipient1_name>', 'email': '<recipient1_email>'}, {'name': '<recipient2_name>', 'email': '<recipient2_email>'}],
+          cc=[{'name': '<cc1_name>', 'email': '<cc1_email>'}],
+          bcc=[{'name': '<bcc1_name>', 'email': '<bcc1_email>'}],
+          subject='<email_subject>',
+          date='<email_date>',
+          parsed_date=datetime.datetime(...),
+          message_id='<message_id>',
+          headers=[
+            {'Name': '<header_name1>', 'Value': '<header_value1>'},
+            {'Name': '<header_name2>', 'Value': '<header_value2>'}
+          ]
+        )
+
+    Raises:
+        None.
+    """
+    if isinstance(raw_email, bytes):
+        email_message = email.message_from_bytes(raw_email)
+        charset = email_message.get_content_charset("utf-8")
+        raw_email = str_encode(raw_email, charset, errors="ignore")
+    else:
+        try:
+            email_message = email.message_from_string(raw_email)
+        except UnicodeEncodeError:
+            email_message = email.message_from_string(raw_email.encode("utf-8"))
+
+    parsed_email = {
+        "raw_email": raw_email,
+        "body": {"plain": [], "html": []},
+        "attachments": [],
+    }
+
+    mime_type = email_message.get_content_maintype()
+    if mime_type == "multipart":
+        logger.debug("Multipart message. Will process parts.")
+        for part in email_message.walk():
+            content_type = part.get_content_type()
+            content_disposition = part.get("Content-Disposition", None)
+            if content_disposition or not part.get_content_maintype() == "text":
+                content = part.get_payload(decode=True)
+            else:
+                content = decode_content(part)
+
+            if content_type == "text/plain" and (
+                not content_disposition or content_disposition.startswith("inline")
+            ):
+                parsed_email["body"]["plain"].append(content)
+            elif content_type == "text/html" and (
+                not content_disposition or content_disposition.startswith("inline")
+            ):
+                parsed_email["body"]["html"].append(content)
+            elif content_disposition:
+                attachment = parse_attachment(part)
+                if attachment:
+                    parsed_email["attachments"].append(attachment)
+
+    elif mime_type == "text":
+        payload = decode_content(email_message)
+        parsed_email["body"]["plain"].append(payload)
+
+    elif mime_type == "application" and email_message.get_content_subtype() == "pdf":
+        attachment = parse_attachment(email_message)
+        if attachment:
+            parsed_email["attachments"].append(attachment)
+
+    parsed_email["sent_from"] = get_mail_addresses(email_message, "from")
+    parsed_email["sent_to"] = get_mail_addresses(email_message, "to")
+    parsed_email["cc"] = get_mail_addresses(email_message, "cc")
+    parsed_email["bcc"] = get_mail_addresses(email_message, "bcc")
+
+    email_dict = dict(email_message.items())
+    parsed_email["subject"], parsed_email["date"], parsed_email["message_id"] = (
+        decode_mail_header(email_dict.get("Subject", ""))[0],
+        email_dict.get("Date", ""),
+        email_dict.get("Message-ID", ""),
+    )
+
+    parsed_email["headers"] = [
+        {"Name": key, "Value": value}
+        for key, value in email_dict.items()
+        if key.lower()
+        in [
+            "received-spf",
+            "mime-version",
+            "x-spam-status",
+            "x-spam-score",
+            "content-type",
+        ]
+    ]
+
+    if parsed_email["date"]:
+        parsed_email["parsed_date"] = email.utils.parsedate_to_datetime(
+            parsed_email["date"]
+        )
+
+    logger.info(
+        "Downloaded and parsed mail '{}' with {} attachments".format(
+            parsed_email["subject"], len(parsed_email["attachments"])
+        )
+    )
+
+    return Struct(**parsed_email)
 
 
 def decode_content(message: email.message.Message) -> str:
@@ -331,100 +467,3 @@ def parse_flags(headers):
         return []
     headers = bytes(headers, "ascii")
     return list(imaplib.ParseFlags(headers))
-
-
-def parse_email(raw_email, policy=None):
-    if policy is not None:
-        email_parse_kwargs = dict(policy=policy)
-    else:
-        email_parse_kwargs = {}
-
-    # Should first get content charset then str_encode with charset.
-    if isinstance(raw_email, bytes):
-        email_message = email.message_from_bytes(
-            raw_email, **email_parse_kwargs)
-        charset = email_message.get_content_charset('utf-8')
-        raw_email = str_encode(raw_email, charset, errors='ignore')
-    else:
-        try:
-            email_message = email.message_from_string(
-                raw_email, **email_parse_kwargs)
-        except UnicodeEncodeError:
-            email_message = email.message_from_string(
-                raw_email.encode('utf-8'), **email_parse_kwargs)
-
-    maintype = email_message.get_content_maintype()
-    parsed_email = {'raw_email': raw_email}
-
-    body = {
-        "plain": [],
-        "html": []
-    }
-    attachments = []
-
-    if maintype in ('multipart', 'image'):
-        logger.debug("Multipart message. Will process parts.")
-        for part in email_message.walk():
-            content_type = part.get_content_type()
-            part_maintype = part.get_content_maintype()
-            content_disposition = part.get('Content-Disposition', None)
-            if content_disposition or not part_maintype == "text":
-                content = part.get_payload(decode=True)
-            else:
-                content = decode_content(part)
-
-            is_inline = content_disposition is None \
-                or content_disposition.startswith("inline")
-            if content_type == "text/plain" and is_inline:
-                body['plain'].append(content)
-            elif content_type == "text/html" and is_inline:
-                body['html'].append(content)
-            elif content_disposition:
-                attachment = parse_attachment(part)
-                if attachment:
-                    attachments.append(attachment)
-
-    elif maintype == 'text':
-        payload = decode_content(email_message)
-        body['plain'].append(payload)
-
-    elif maintype == 'application':
-            if email_message.get_content_subtype() == 'pdf':
-                attachment = parse_attachment(email_message)
-                if attachment:
-                    attachments.append(attachment)
-
-    parsed_email['attachments'] = attachments
-
-    parsed_email['body'] = body
-    email_dict = dict(email_message.items())
-
-    parsed_email['sent_from'] = get_mail_addresses(email_message, 'from')
-    parsed_email['sent_to'] = get_mail_addresses(email_message, 'to')
-    parsed_email['cc'] = get_mail_addresses(email_message, 'cc')
-    parsed_email['bcc'] = get_mail_addresses(email_message, 'bcc')
-
-    value_headers_keys = ['subject', 'date', 'message-id']
-    key_value_header_keys = ['received-spf',
-                             'mime-version',
-                             'x-spam-status',
-                             'x-spam-score',
-                             'content-type']
-
-    parsed_email['headers'] = []
-    for key, value in email_dict.items():
-
-        if key.lower() in value_headers_keys:
-            valid_key_name = key.lower().replace('-', '_')
-            parsed_email[valid_key_name] = decode_mail_header(value)
-
-        if key.lower() in key_value_header_keys:
-            parsed_email['headers'].append({'Name': key,
-                                            'Value': value})
-
-    if parsed_email.get('date'):
-        parsed_email['parsed_date'] = email.utils.parsedate_to_datetime(parsed_email['date'])
-
-    logger.info("Downloaded and parsed mail '{}' with {} attachments".format(
-        parsed_email.get('subject'), len(parsed_email.get('attachments'))))
-    return Struct(**parsed_email)
