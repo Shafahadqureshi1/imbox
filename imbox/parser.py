@@ -11,6 +11,8 @@ from email.header import decode_header
 from imbox.utils import str_encode, str_decode
 
 import logging
+from typing import List, Dict
+from imbox.utils import str_decode
 
 logger = logging.getLogger(__name__)
 
@@ -57,19 +59,33 @@ def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
     return "".join(decoded_headers)
 
 
-def get_mail_addresses(message, header_name):
+def get_mail_addresses(
+    message: email.message.Message, header_name: str
+) -> List[Dict[str, str]]:
     """
-    Retrieve all email addresses from one message header.
+    Retrieve all email addresses from a specific message header.
+
+    Args:
+        message (email.message.Message): The email message to retrieve the addresses from.
+        header_name (str): The name of the header.
+
+    Returns:
+        List[Dict[str, str]]: A list of dictionaries, each containing the name and email address.
     """
     headers = [h for h in message.get_all(header_name, [])]
     addresses = email.utils.getaddresses(headers)
 
-    for index, (address_name, address_email) in enumerate(addresses):
-        addresses[index] = {'name': decode_mail_header(address_name),
-                            'email': address_email}
-        logger.debug("{} Mail address in message: <{}> {}".format(
-            header_name.upper(), address_name, address_email))
-    return addresses
+    def decode_address(address: Tuple[str, str]):
+        address_name, address_email = address
+        name = decode_mail_header(address_name)
+        logger.debug(
+            "{} Mail address in message: <{}> {}".format(
+                header_name.upper(), address_name, address_email
+            )
+        )
+        return {"name": name, "email": address_email}
+
+    return [decode_address(address) for address in addresses]
 
 
 def decode_param(param):
