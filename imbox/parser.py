@@ -16,6 +16,7 @@ from imbox.utils import str_decode
 from typing import Tuple
 from email.message import Message
 from typing import Optional, Union, List, Dict
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,40 @@ def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
             )
         )
     return "".join(decoded_headers)
+
+
+def decode_content(message: email.message.Message) -> str:
+    """
+    Decode the content of an email message.
+
+    Args:
+        message: The email message to decode.
+
+    Returns:
+        The decoded content of the email message as a string.
+    """
+    content = message.get_payload(decode=True)
+    charset = message.get_content_charset("utf-8")
+
+    try:
+        return _decode_content_with_charset(content, charset)
+    except LookupError:
+        encoding = chardet.detect(content).get("encoding")
+        if encoding:
+            return _decode_content_with_encoding(content, encoding)
+        return content
+    except AttributeError:
+        return content
+
+
+def _decode_content_with_charset(content: bytes, charset: Optional[str]) -> str:
+    if charset is None:
+        charset = "utf-8"
+    return content.decode(charset, "ignore")
+
+
+def _decode_content_with_encoding(content: bytes, encoding: str) -> str:
+    return content.decode(encoding, "ignore")
 
 
 def parse_content_disposition(content_disposition: str) -> List[str]:
@@ -260,20 +295,6 @@ def get_mail_addresses(
         return {"name": name, "email": address_email}
 
     return [decode_address(address) for address in addresses]
-
-
-def decode_content(message):
-    content = message.get_payload(decode=True)
-    charset = message.get_content_charset('utf-8')
-    try:
-        return content.decode(charset, 'ignore')
-    except LookupError:
-        encoding = chardet.detect(content).get('encoding')
-        if encoding:
-            return content.decode(encoding, 'ignore')
-        return content
-    except AttributeError:
-        return content
 
 
 def fetch_email_by_uid(uid, connection, parser_policy):
