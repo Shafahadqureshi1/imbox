@@ -13,6 +13,7 @@ from imbox.utils import str_encode, str_decode
 import logging
 from typing import List, Dict
 from imbox.utils import str_decode
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,57 @@ def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
     return "".join(decoded_headers)
 
 
+def decode_param(param: str) -> Tuple[str, str]:
+    """
+    Decode a parameter value in an email header.
+
+    Args:
+        param: The parameter value to decode.
+
+    Returns:
+        A tuple containing the decoded parameter name and value.
+
+    Raises:
+        None.
+
+    Examples:
+        >>> decode_param('name=?utf-8?B?VGhpcyBpcyBhIHRoaW5nIHZhbHVl?=')
+        ('name', 'This is a thing value')
+
+    """
+
+    def decode_quoted_printable(value: str, encoding: str) -> str:
+        value = quopri.decodestring(value)
+        return str_encode(value, encoding)
+
+    def decode_base64(value: str, encoding: str) -> str:
+        value = value.encode()
+        missing_padding = len(value) % 4
+
+        if missing_padding:
+            value += b"=" * (4 - missing_padding)
+
+        value = base64.b64decode(value)
+        return str_encode(value, encoding)
+
+    def decode_value(value: str) -> str:
+        match = re.findall(r"=\?((?:\w|-)+)\?([QB])\?(.+?)\?=", value)
+        if match:
+            for encoding, type_, code in match:
+                if type_ == "Q":
+                    value = decode_quoted_printable(code, encoding)
+                elif type_ == "B":
+                    value = decode_base64(code, encoding)
+        return value
+
+    name, value = param.split("=", 1)
+    values = value.split("\n")
+    decoded_values = [decode_value(v) for v in values]
+    decoded_value = "".join(decoded_values)
+
+    return name, decoded_value
+
+
 def get_mail_addresses(
     message: email.message.Message, header_name: str
 ) -> List[Dict[str, str]]:
@@ -86,36 +138,6 @@ def get_mail_addresses(
         return {"name": name, "email": address_email}
 
     return [decode_address(address) for address in addresses]
-
-
-def decode_param(param):
-    name, v = param.split('=', 1)
-    values = v.split('\n')
-    value_results = []
-    for value in values:
-        match = re.findall(r'=\?((?:\w|-)+)\?([QB])\?(.+?)\?=', value)
-        if match:
-            for encoding, type_, code in match:
-                if type_ == 'Q':
-                    value = quopri.decodestring(code)
-                elif type_ == 'B':
-                    value = code.encode()
-                    missing_padding = len(value) % 4
-
-                    if missing_padding:
-                        value += b"=" * (4 - missing_padding)
-
-                    value = base64.b64decode(value)
-
-                value = str_encode(value, encoding)
-
-                value_results.append(value)
-
-    if value_results:
-        v = ''.join(value_results)
-
-    logger.debug("Decoded parameter {} - {}".format(name, v))
-    return name, v
 
 
 def parse_content_disposition(content_disposition):
