@@ -60,6 +60,24 @@ def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
     return "".join(decoded_headers)
 
 
+def parse_content_disposition(content_disposition: str) -> List[str]:
+    """
+    Parse the Content-Disposition header and return a list of its parts.
+
+    Args:
+        content_disposition: The Content-Disposition header string.
+
+    Returns:
+        A list of parts in the Content-Disposition header.
+
+    Example:
+        >>> parse_content_disposition('attachment; filename="report.pdf"; size=12345')
+        ['attachment', 'filename="report.pdf"', 'size=12345']
+    """
+    ret = re.split(r';(?=(?:[^"]*"[^"]*")*[^"]*$)', content_disposition)
+    return [part.strip() for part in ret]
+
+
 def decode_param(param: str) -> Tuple[str, str]:
     """
     Decode a parameter value in an email header.
@@ -138,25 +156,6 @@ def get_mail_addresses(
         return {"name": name, "email": address_email}
 
     return [decode_address(address) for address in addresses]
-
-
-def parse_content_disposition(content_disposition):
-    # Split content disposition on semicolon except when inside a string
-    in_quote = False
-    str_start = 0
-    ret = []
-
-    for i in range(len(content_disposition)):
-        if content_disposition[i] == ';' and not in_quote:
-            ret.append(content_disposition[str_start:i])
-            str_start = i+1
-        elif content_disposition[i] == '"' or content_disposition[i] == "'":
-            in_quote = not in_quote
-
-    if str_start < len(content_disposition):
-        ret.append(content_disposition[str_start:])
-
-    return ret
 
 
 
