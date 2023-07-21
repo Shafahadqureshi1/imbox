@@ -5,6 +5,7 @@ from imbox.query import build_search_query
 from imbox.parser import fetch_email_by_uid
 from typing import List, Optional
 from typing import List, Optional
+from typing import List
 
 
 logger = logging.getLogger(__name__)
