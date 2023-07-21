@@ -17,6 +17,7 @@ from typing import Tuple
 from email.message import Message
 from typing import Optional, Union, List, Dict
 from typing import Optional
+from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,33 @@ def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
             )
         )
     return "".join(decoded_headers)
+
+
+def fetch_email_by_uid(
+    uid: int, connection: imaplib.IMAP4, parser_policy: Optional[Dict] = None
+) -> Struct:
+    """
+    Fetches an email by its UID from the IMAP server.
+
+    Args:
+        uid (int): The unique identifier of the email.
+        connection (imaplib.IMAP4): The IMAP connection.
+        parser_policy (Optional[Dict], optional): The email parser policy. Defaults to None.
+
+    Returns:
+        Struct: The parsed email object.
+    """
+    message, data = connection.uid("fetch", uid, "(BODY.PEEK[] FLAGS)")
+    logger.debug("Fetched message for UID {}".format(uid))
+
+    raw_headers = data[0][0] + data[1]
+    raw_email = data[0][1]
+
+    email_object = parse_email(raw_email, policy=parser_policy)
+    flags = parse_flags(raw_headers.decode())
+    email_object.__dict__["flags"] = flags
+
+    return email_object
 
 
 def decode_content(message: email.message.Message) -> str:
@@ -295,20 +323,6 @@ def get_mail_addresses(
         return {"name": name, "email": address_email}
 
     return [decode_address(address) for address in addresses]
-
-
-def fetch_email_by_uid(uid, connection, parser_policy):
-    message, data = connection.uid('fetch', uid, '(BODY.PEEK[] FLAGS)')
-    logger.debug("Fetched message for UID {}".format(int(uid)))
-
-    raw_headers = data[0][0] + data[1]
-    raw_email = data[0][1]
-
-    email_object = parse_email(raw_email, policy=parser_policy)
-    flags = parse_flags(raw_headers.decode())
-    email_object.__dict__['flags'] = flags
-
-    return email_object
 
 
 def parse_flags(headers):
