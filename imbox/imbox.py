@@ -6,21 +6,55 @@ from imbox.messages import Messages
 import logging
 
 from imbox.vendors import GmailMessages, hostname_vendorname_dict, name_authentication_string_dict
+from imbox.vendors import hostname_vendorname_dict, name_authentication_string_dict
 
 logger = logging.getLogger(__name__)
 
 
+
+
 class Imbox:
 
-    authentication_error_message = None
+    def __init__(
+        self,
+        hostname: str,
+        username: str = None,
+        password: str = None,
+        ssl: bool = True,
+        port: int = None,
+        ssl_context=None,
+        policy=None,
+        starttls: bool = False,
+        vendor: str = None,
+    ) -> None:
+        """
+        Initializes a new IMAP4 class with the specified hostname and provisions
+        all the necessary configurations required for a connection.
 
-    def __init__(self, hostname, username=None, password=None, ssl=True,
-                 port=None, ssl_context=None, policy=None, starttls=False,
-                 vendor=None):
+        Args:
+            hostname (str): The hostname of the mail server.
+            username (str, optional): The user name for the account.
+                Default is None.
+            password (str, optional): The password for the account.
+                Default is None.
+            ssl (bool, optional): If True, creates a SSL connection.
+                Default is True.
+            port (int, optional): The server hostname port.
+                Default is None.
+            ssl_context (ssl.SSLContext, optional): A SSL context to be used for
+                SSL connections. Default is None.
+            policy (imaplib.IMAP4, optional): The policy object will be used
+                when parsing message bodies. Default is None.
+            starttls (bool, optional): If True, create a connection that uses
+                the STARTTLS command. Default is False.
+            vendor (str, optional): The mail server vendor name. Default is None.
 
-        self.server = ImapTransport(hostname, ssl=ssl, port=port,
-                                    ssl_context=ssl_context, starttls=starttls)
-
+        Raises:
+            imaplib.IMAP4.error: An error occurred during connection.
+        """
+        self.server = ImapTransport(
+            hostname, ssl=ssl, port=port, ssl_context=ssl_context, starttls=starttls
+        )
         self.hostname = hostname
         self.username = username
         self.password = password
@@ -29,18 +63,23 @@ class Imbox:
 
         if self.vendor is not None:
             self.authentication_error_message = name_authentication_string_dict.get(
-                self.vendor)
+                self.vendor
+            )
 
         try:
             self.connection = self.server.connect(username, password)
         except imaplib.IMAP4.error as e:
             if self.authentication_error_message is None:
                 raise
-            raise imaplib.IMAP4.error(
-                self.authentication_error_message + '\n' + str(e))
+            raise imaplib.IMAP4.error(self.authentication_error_message + "\n" + str(e))
 
-        logger.info("Connected to IMAP Server with user {username} on {hostname}{ssl}".format(
-            hostname=hostname, username=username, ssl=(" over SSL" if ssl or starttls else "")))
+        logger.info(
+            "Connected to IMAP Server with user {username} on {hostname}{ssl}".format(
+                hostname=hostname,
+                username=username,
+                ssl=(" over SSL" if ssl or starttls else ""),
+            )
+        )
 
     def __enter__(self):
         return self
