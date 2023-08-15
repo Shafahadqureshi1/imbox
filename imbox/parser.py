@@ -12,6 +12,9 @@ from imbox.utils import str_encode, str_decode
 
 import logging
 
+
+from typing import List
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,17 +97,30 @@ def decode_param(param):
     logger.debug("Decoded parameter {} - {}".format(name, v))
     return name, v
 
+def parse_content_disposition(content_disposition: str) -> List[str]:
+    """
+    Parse the Content-Disposition header value.
 
-def parse_content_disposition(content_disposition):
+    This function splits the Content-Disposition header value into parts, excluding any parts that are inside quotes.
+
+    Parameters:
+    content_disposition (str): Content-Disposition header value.
+
+    Returns:
+    list: List of parts of the Content-Disposition header value.
+
+    Note:
+    The function does not validate the Content-Disposition header value.
+    """
     # Split content disposition on semicolon except when inside a string
     in_quote = False
     str_start = 0
     ret = []
 
     for i in range(len(content_disposition)):
-        if content_disposition[i] == ';' and not in_quote:
+        if content_disposition[i] == ";" and not in_quote:
             ret.append(content_disposition[str_start:i])
-            str_start = i+1
+            str_start = i + 1
         elif content_disposition[i] == '"' or content_disposition[i] == "'":
             in_quote = not in_quote
 
