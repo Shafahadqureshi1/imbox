@@ -7,8 +7,35 @@ import logging
 
 from imbox.vendors import GmailMessages, hostname_vendorname_dict, name_authentication_string_dict
 from imbox.vendors import hostname_vendorname_dict, name_authentication_string_dict
+from typing import List, Dict, Union, Optional
+from imaplib import IMAP4
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -79,27 +106,38 @@ class Imbox:
         if self.copy(uid, destination_folder):
             self.delete(uid)
 
-    def messages(self, **kwargs):
-        folder = kwargs.get('folder', False)
 
-        messages_class = Messages
-
-        if self.vendor == 'gmail':
-            messages_class = GmailMessages
-
+    def messages(self, unread=None, starred=None, folder=None, uid=None):
         if folder:
-            self.connection.select(
-                messages_class.FOLDER_LOOKUP.get((folder.lower())) or folder)
-            msg = " from folder '{}'".format(folder)
-            del kwargs['folder']
-        else:
-            msg = " from inbox"
+            self.mailbox.select_folder(folder)
 
-        logger.info("Fetch list of messages{}".format(msg))
+        search_criteria = self._build_search_criteria(unread, starred, uid)
+        response, message_id_numbers = self.mailbox.uid("search", None, search_criteria)
 
-        return messages_class(connection=self.connection,
-                              parser_policy=self.parser_policy,
-                              **kwargs)
+        if response == "OK":
+            for message_id_number in message_id_numbers[0].split():
+                yield self._fetch_email_by(message_id_number)
 
     def folders(self):
         return self.connection.list()
+
+    def _build_search_criteria(self, unread, starred, uid):
+        email_filters = self._set_email_filters(unread, starred, uid)
+        return "({})".format(" ".join(email_filters))
+
+    def _set_email_filters(self, unread, starred, uid):
+        email_filters = ["ALL"]
+
+        if unread:
+            email_filters.append("UNSEEN")
+        if starred:
+            email_filters.append("FLAGGED")
+        if uid:
+            email_filters.append("UID {}".format(uid))
+
+        return email_filters
+
+    def _fetch_email_by(self, message_id_number):
+        response, email_data = self.mailbox.uid("fetch", message_id_number, "(BODY[])")
+        raw_email = email_data[0][1]
+        return self._parse_email_from(raw_email)
