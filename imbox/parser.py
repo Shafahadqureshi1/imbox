@@ -51,6 +51,47 @@ def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
 
     return process_and_join_headers(headers, default_charset)
 
+def parse_content_disposition(content_disposition: str) -> List[str]:
+    """
+    Parses a string representing a Content-Disposition header value.
+    It splits the string on semicolons to separate the different parts of the header, ignoring semicolons that are inside quotations.
+    The parts of the header are returned as a list of strings.
+    If the input is an empty string, an empty list is returned.
+
+    Parameters
+    ----------
+    content_disposition : str
+        The string representing the Content-Disposition header value.
+
+    Returns
+    -------
+    list
+        The parts of the header as a list of strings.
+    """
+
+    def append_to_result(
+        ret: List[str], idx: str, content: str, in_quote: bool
+    ) -> Tuple[List[str], bool]:
+        if content[idx] == ";":
+            # Check if not in quote
+            if not in_quote:
+                ret.append(content[:idx])
+                return content[idx + 1 :], False
+        elif content[idx] in {'"', "'"}:
+            in_quote = not in_quote
+        return content, in_quote
+
+    def split_content_disposition(input_str: str):
+        in_quote = False
+        ret = []
+
+        while input_str:
+            input_str, in_quote = append_to_result(ret, 0, input_str, in_quote)
+
+        return ret
+
+    return split_content_disposition(content_disposition)
+
 
 def get_mail_addresses(message, header_name):
     """
@@ -189,25 +230,6 @@ def get_decoded_header(index, text, charset: str, default_charset: str) -> str:
     except LookupError:
         # if the charset is unknown, force default
         return str_decode_with_replacement(text, default_charset)
-
-
-def parse_content_disposition(content_disposition):
-    # Split content disposition on semicolon except when inside a string
-    in_quote = False
-    str_start = 0
-    ret = []
-
-    for i in range(len(content_disposition)):
-        if content_disposition[i] == ';' and not in_quote:
-            ret.append(content_disposition[str_start:i])
-            str_start = i+1
-        elif content_disposition[i] == '"' or content_disposition[i] == "'":
-            in_quote = not in_quote
-
-    if str_start < len(content_disposition):
-        ret.append(content_disposition[str_start:])
-
-    return ret
 
 
 
