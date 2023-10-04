@@ -14,6 +14,11 @@ import logging
 from email.message import Message
 import email.errors
 
+
+from typing import Tuple
+from typing import Tuple, List
+from imbox.utils import str_encode
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +81,23 @@ def str_decode_with_replacement(value: str, charset: str) -> str:
     return str_decode(str_encode(value, charset, "replace"), charset)
 
 
+def decode_param(param: str) -> Tuple[str, str]:
+    """
+    Decode the given parameter.
+
+    Args:
+        param (str): The parameter to decode, constructed in the form of "name=value".
+
+    Returns:
+        Tuple[str, str]: A tuple containing the name and the (possibly decoded) value.
+    """
+    name, values = split_params(param)
+    v = "".join([decode_value(value) for value in values])
+    logger.debug("Decoded parameter {} - {}".format(name, v))
+
+    return name, v
+
+
 def process_and_join_headers(headers, default_charset: str) -> str:
     """
     Process the decoded headers and join them into a single string.
@@ -94,6 +116,49 @@ def process_and_join_headers(headers, default_charset: str) -> str:
         headers[index] = get_decoded_header(index, text, charset, default_charset)
 
     return "".join(headers)
+
+def split_params(param: str) -> Tuple[str, List[str]]:
+    """
+    Splits given parameters into name and values.
+
+    Args:
+         param (str): Parameter string.
+
+    Returns:
+        Tuple[str, List[str]]: A tuple containing the name and a list of values.
+
+    """
+    name, v = param.split("=", 1)
+    values = v.split("\n")
+
+    return name, values
+
+
+def decode_value(value: str) -> str:
+    """
+    Decodes the given value if encoded.
+
+    Args:
+         value (str): Parameter value.
+
+    Returns:
+        str: The decoded value.
+    """
+    match = re.findall(r"=\?((?:\w|-)+)\?([QB])\?(.+?)\?=", value)
+    value_results = []
+    for encoding, type_, code in match:
+        if type_ == "Q":
+            value = quopri.decodestring(code)
+        elif type_ == "B":
+            value = code.encode()
+            missing_padding = len(value) % 4
+            if missing_padding:
+                value += b"=" * (4 - missing_padding)
+            value = base64.b64decode(value)
+        value = str_encode(value, encoding)
+        value_results.append(value)
+
+    return "".join(value_results) if value_results else value
 
 
 def get_decoded_header(index, text, charset: str, default_charset: str) -> str:
@@ -124,36 +189,6 @@ def get_decoded_header(index, text, charset: str, default_charset: str) -> str:
     except LookupError:
         # if the charset is unknown, force default
         return str_decode_with_replacement(text, default_charset)
-
-
-def decode_param(param):
-    name, v = param.split('=', 1)
-    values = v.split('\n')
-    value_results = []
-    for value in values:
-        match = re.findall(r'=\?((?:\w|-)+)\?([QB])\?(.+?)\?=', value)
-        if match:
-            for encoding, type_, code in match:
-                if type_ == 'Q':
-                    value = quopri.decodestring(code)
-                elif type_ == 'B':
-                    value = code.encode()
-                    missing_padding = len(value) % 4
-
-                    if missing_padding:
-                        value += b"=" * (4 - missing_padding)
-
-                    value = base64.b64decode(value)
-
-                value = str_encode(value, encoding)
-
-                value_results.append(value)
-
-    if value_results:
-        v = ''.join(value_results)
-
-    logger.debug("Decoded parameter {} - {}".format(name, v))
-    return name, v
 
 
 def parse_content_disposition(content_disposition):
