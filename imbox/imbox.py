@@ -6,41 +6,41 @@ from imbox.messages import Messages
 import logging
 
 from imbox.vendors import GmailMessages, hostname_vendorname_dict, name_authentication_string_dict
+from imbox.vendors import hostname_vendorname_dict, name_authentication_string_dict
 
 logger = logging.getLogger(__name__)
 
 
+
+
+
+
+
+
 class Imbox:
 
-    authentication_error_message = None
-
-    def __init__(self, hostname, username=None, password=None, ssl=True,
-                 port=None, ssl_context=None, policy=None, starttls=False,
-                 vendor=None):
-
-        self.server = ImapTransport(hostname, ssl=ssl, port=port,
-                                    ssl_context=ssl_context, starttls=starttls)
-
-        self.hostname = hostname
-        self.username = username
-        self.password = password
-        self.parser_policy = policy
-        self.vendor = vendor or hostname_vendorname_dict.get(self.hostname)
-
-        if self.vendor is not None:
-            self.authentication_error_message = name_authentication_string_dict.get(
-                self.vendor)
-
-        try:
-            self.connection = self.server.connect(username, password)
-        except imaplib.IMAP4.error as e:
-            if self.authentication_error_message is None:
-                raise
-            raise imaplib.IMAP4.error(
-                self.authentication_error_message + '\n' + str(e))
-
-        logger.info("Connected to IMAP Server with user {username} on {hostname}{ssl}".format(
-            hostname=hostname, username=username, ssl=(" over SSL" if ssl or starttls else "")))
+    def __init__(
+        self,
+        hostname,
+        username=None,
+        password=None,
+        ssl=True,
+        ssl_context=None,
+        starttls=False,
+        port=None,
+        vendor_name=None,
+    ):
+        if vendor_name and vendor_name in name_authentication_string_dict:
+            (
+                self.username,
+                self.password,
+                self.ssl_context,
+            ) = name_authentication_string_dict[vendor_name]
+        self.set_authentication_string(username, password)
+        self.set_vendor_string(hostname, vendor_name)
+        self.transport = ImapTransport(
+            hostname, ssl=ssl, ssl_context=ssl_context, starttls=starttls, port=port
+        )
 
     def __enter__(self):
         return self
