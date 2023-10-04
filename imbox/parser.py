@@ -12,6 +12,7 @@ from imbox.utils import str_encode, str_decode
 
 import logging
 from email.message import Message
+import email.errors
 
 logger = logging.getLogger(__name__)
 
@@ -26,29 +27,24 @@ class Struct:
     def __repr__(self):
         return str(self.__dict__)
 
-
-def decode_mail_header(value, default_charset='us-ascii'):
+def decode_mail_header(value: str, default_charset: str = "us-ascii") -> str:
     """
     Decode a header value into a unicode string.
+
+    Args:
+        value (str): The header value to be decoded.
+        default_charset (str, optional): The default encoding to be used if it can't
+        be determined from the header value. Defaults to 'us-ascii'.
+
+    Returns:
+        str: The decoded header value as a unicode string.
     """
     try:
         headers = decode_header(value)
     except email.errors.HeaderParseError:
-        return str_decode(str_encode(value, default_charset, 'replace'), default_charset)
-    else:
-        for index, (text, charset) in enumerate(headers):
-            try:
-                logger.debug("Mail header no. {index}: {data} encoding {charset}".format(
-                    index=index,
-                    data=str_decode(text, charset or 'utf-8', 'replace'),
-                    charset=charset))
-                headers[index] = str_decode(text, charset or default_charset,
-                                            'replace')
-            except LookupError:
-                # if the charset is unknown, force default
-                headers[index] = str_decode(text, default_charset, 'replace')
+        return str_decode_with_replacement(value, default_charset)
 
-        return ''.join(headers)
+    return process_and_join_headers(headers, default_charset)
 
 
 def get_mail_addresses(message, header_name):
@@ -64,6 +60,70 @@ def get_mail_addresses(message, header_name):
         logger.debug("{} Mail address in message: <{}> {}".format(
             header_name.upper(), address_name, address_email))
     return addresses
+
+
+def str_decode_with_replacement(value: str, charset: str) -> str:
+    """
+    Encode and decode a string with a given character set, replacing any invalid characters
+
+    Args:
+        value (str): The string value to be encoded and decoded
+        charset (str): The charset to use for encoding and decoding
+
+    Returns:
+        str: The resulting string after encoding and decoding with replacement of invalid characters
+    """
+    return str_decode(str_encode(value, charset, "replace"), charset)
+
+
+def process_and_join_headers(headers, default_charset: str) -> str:
+    """
+    Process the decoded headers and join them into a single string.
+
+    This function goes through each header, tries to decode it using its declared charset or the default charset
+    and joins them into a single string.
+
+    Args:
+        headers (list): Decoded headers as a list of (text, charset) tuples.
+        default_charset (str): The default encoding to be used if the charset can't be determined from the header.
+
+    Returns:
+        str: The joined headers as a single string.
+    """
+    for index, (text, charset) in enumerate(headers):
+        headers[index] = get_decoded_header(index, text, charset, default_charset)
+
+    return "".join(headers)
+
+
+def get_decoded_header(index, text, charset: str, default_charset: str) -> str:
+    """
+    Get a decoded header in a safe way.
+
+    This function attempts to decode a header using its declared charset or the default charset.
+    If decoding fails due to an unknown charset, the default charset is forced.
+
+    Args:
+        index: The index of the header
+        text: The text part of the header
+        charset (str): The declared charset of the header
+        default_charset (str): The default charset to use
+
+    Returns:
+        str: The decoded header
+    """
+    try:
+        logger.debug(
+            "Mail header no. {index}: {data} encoding {charset}".format(
+                index=index,
+                data=str_decode(text, charset or "utf-8", "replace"),
+                charset=charset,
+            )
+        )
+        return str_decode(text, charset or default_charset, "replace")
+    except LookupError:
+        # if the charset is unknown, force default
+        return str_decode_with_replacement(text, default_charset)
 
 
 def decode_param(param):
