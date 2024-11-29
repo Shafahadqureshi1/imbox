@@ -86,4 +86,4 @@ with Imbox('imap.gmail.com',
         message.message_id
         message.date
         message.body.plain
-```
+```<earnings points> ×m
